@@ -31,8 +31,13 @@ BINDGEN_OUT           = $(DEPS_LIB_DIR)/$(shell $(RUSTC) --print-file-name $(BIN
 BINDGEN_SEARCH_PATHS  = /usr/local/opt/llvm/lib
 BINDGEN_SEARCH_FLAGS  = $(patsubst %,-L %, $(BINDGEN_SEARCH_PATHS))
 
+EXTERN_DIR            = $(SRC_DIR)/ffi/extern
+EXTERN_GENERATOR      = $(EXTERN_DIR)/generate
+EXTERN_INPUT          = $(EXTERN_GENERATOR) $(EXTERN_DIR)/includes.h
+EXTERN_OUT            = $(EXTERN_DIR)/efl.h
+
 FFI_FILE              = $(SRC_DIR)/ffi/lib.rs
-FFI_INPUT             = $(SRC_DIR)/ffi/*.rs $(SRC_DIR)/ffi/efl.h
+FFI_INPUT             = $(SRC_DIR)/ffi/*.rs
 FFI_OUT               = $(LIB_DIR)/$(shell $(RUSTC) --print-file-name $(FFI_FILE))
 FFI_SEARCH_PATHS      = $(DEPS_LIB_DIR)
 FFI_SEARCH_FLAGS      = $(patsubst %,-L %, $(FFI_SEARCH_PATHS))
@@ -78,7 +83,10 @@ clean-deps:
 
 # Library compilation
 
-$(FFI_OUT): $(FFI_INPUT)
+$(EXTERN_OUT): $(EXTERN_INPUT)
+	$(EXTERN_GENERATOR)
+
+$(FFI_OUT): $(EXTERN_OUT) $(FFI_INPUT)
 	mkdir -p $(LIB_DIR)
 	$(RUSTC) --out-dir=$(LIB_DIR) $(FFI_SEARCH_FLAGS) -O $(FFI_FILE)
 
@@ -91,6 +99,7 @@ lib: $(EFL_OUT)
 
 .PHONY: clean-lib
 clean-lib:
+	rm $(EXTERN_OUT)
 	rm -rf $(LIB_DIR)
 
 # Documentation generation
