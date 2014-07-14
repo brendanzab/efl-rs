@@ -13,12 +13,10 @@
 #![comment = "Servo-specific wrapper for the relevant components of the \
               Enlightenment Foundation Libraries."]
 
+#![feature(globs)]
 #![feature(macro_rules)]
-#![feature(phase)]
 #![feature(unsafe_destructor)]
 
-#[phase(plugin)]
-extern crate bindgen;
 extern crate libc;
 extern crate sync;
 

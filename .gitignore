@@ -8,7 +8,7 @@
 # except according to those terms.
 
 /deps/lib/
-/deps/efl/efl.h
+/src/ffi/extern/efl.h
 /lib/
 /bin/
 /doc/

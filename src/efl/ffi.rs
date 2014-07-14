@@ -7,12 +7,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(dead_code)]
-#![allow(uppercase_variables)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case_functions)]
+extern crate ffi;
 
-bindgen!("../../deps/efl/efl.h", link="ecore", link="ecore_evas", link="evas")
+pub use self::ffi::*;
 
 pub static EINA_FALSE: Eina_Bool = 0;
 pub static EINA_TRUE: Eina_Bool = 1;

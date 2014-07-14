@@ -31,10 +31,16 @@ BINDGEN_OUT           = $(DEPS_LIB_DIR)/$(shell $(RUSTC) --print-file-name $(BIN
 BINDGEN_SEARCH_PATHS  = /usr/local/opt/llvm/lib
 BINDGEN_SEARCH_FLAGS  = $(patsubst %,-L %, $(BINDGEN_SEARCH_PATHS))
 
+FFI_FILE              = $(SRC_DIR)/ffi/lib.rs
+FFI_INPUT             = $(SRC_DIR)/ffi/*.rs $(SRC_DIR)/ffi/efl.h
+FFI_OUT               = $(LIB_DIR)/$(shell $(RUSTC) --print-file-name $(FFI_FILE))
+FFI_SEARCH_PATHS      = $(DEPS_LIB_DIR)
+FFI_SEARCH_FLAGS      = $(patsubst %,-L %, $(FFI_SEARCH_PATHS))
+
 EFL_FILE              = $(SRC_DIR)/efl/lib.rs
-EFL_INPUT             = $(SRC_DIR)/efl/*.rs
+EFL_INPUT             = $(SRC_DIR)/efl/*.rs $(FFI_OUT)
 EFL_OUT               = $(LIB_DIR)/$(shell $(RUSTC) --print-file-name $(EFL_FILE))
-EFL_SEARCH_PATHS      = $(DEPS_LIB_DIR)
+EFL_SEARCH_PATHS      = $(LIB_DIR)
 EFL_SEARCH_FLAGS      = $(patsubst %,-L %, $(EFL_SEARCH_PATHS))
 EFL_DOC_OUT           = $(DOC_DIR)/$(shell $(RUSTC) --print-crate-name $(EFL_FILE))
 
@@ -72,6 +78,10 @@ clean-deps:
 
 # Library compilation
 
+$(FFI_OUT): $(FFI_INPUT)
+	mkdir -p $(LIB_DIR)
+	$(RUSTC) --out-dir=$(LIB_DIR) $(FFI_SEARCH_FLAGS) -O $(FFI_FILE)
+
 $(EFL_OUT): $(EFL_INPUT)
 	mkdir -p $(LIB_DIR)
 	$(RUSTC) --out-dir=$(LIB_DIR) $(EFL_SEARCH_FLAGS) -O $(EFL_FILE)
@@ -87,7 +97,7 @@ clean-lib:
 
 $(EFL_DOC_OUT): $(EFL_INPUT)
 	mkdir -p $(DOC_DIR)
-	$(RUSTDOC) -o $(LIB_DIR) $(EFL_SEARCH_FLAGS) $(EFL_FILE)
+	$(RUSTDOC) -o $(DOC_DIR) $(EFL_SEARCH_FLAGS) $(EFL_FILE)
 
 .PHONY: doc
 doc: $(EFL_DOC_OUT)
