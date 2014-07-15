@@ -341,10 +341,15 @@ macro_rules! event_callbacks {
                     ffi::ecore_evas_data_get(ee as *const _, key)
                 }) as *const Window;
                 assert!(!window.is_null());
-                (*window).event_callbacks.$field.as_ref().map(|callback| {
-                    println!("{:p}", callback);
-                    callback.call(&*window) // segfault! >_<
-                });
+                match (*window).event_callbacks.$field {
+                    Some(ref callback) => {
+                        println!("{:p}", callback);
+                        callback.call(&*window) // segfault! >_<
+                    },
+                    None => {
+                        $extern_set_callback((*window).ee, None);
+                    }
+                }
             }
         })+
 
