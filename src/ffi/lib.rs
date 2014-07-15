@@ -24,4 +24,4 @@
 extern crate bindgen;
 extern crate libc;
 
-bindgen!("./extern/efl.h", link="ecore", link="ecore_evas", link="evas")
+bindgen!("./extern/efl.h", link="ecore", link="ecore_evas", link="evas", link="eina")

@@ -38,6 +38,9 @@ impl efl::EventCallback for OnResize {
 
 fn main() {
     let evas = efl::init().unwrap();
+    for name in evas.get_engine_list().iter() {
+        println!("{}", name);
+    }
     let mut window = evas.new_window(0, 0, 800, 600).unwrap();
     window.set_title("hurro.");
     println!("Window title: \"{}\"", window.get_title());

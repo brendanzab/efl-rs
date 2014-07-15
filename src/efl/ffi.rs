@@ -11,6 +11,9 @@ extern crate ffi;
 
 pub use self::ffi::*;
 
+use libc;
+use std::ptr;
+
 pub static EINA_FALSE: Eina_Bool = 0;
 pub static EINA_TRUE: Eina_Bool = 1;
 
@@ -22,4 +25,24 @@ pub fn to_eina_bool(x: bool) -> Eina_Bool {
 /// Convert an `Eina_Bool` to a Rust boolean.
 pub fn from_eina_bool(x: Eina_Bool) -> bool {
     if x == EINA_FALSE { false } else { true }
+}
+
+pub fn eina_list_iter(list: *const Eina_List) -> EinaListItems {
+    EinaListItems {
+        iter: unsafe { eina_list_iterator_new(list) },
+    }
+}
+
+pub struct EinaListItems {
+    iter: *mut Eina_Iterator,
+}
+
+impl Iterator<*mut libc::c_void> for EinaListItems {
+    fn next(&mut self) -> Option<*mut libc::c_void> {
+        let mut data = ptr::mut_null();
+        match unsafe { eina_iterator_next(self.iter, &mut data) } {
+            EINA_TRUE => Some(data),
+            _ => None,
+        }
+    }
 }

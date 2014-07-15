@@ -20,6 +20,7 @@
 extern crate libc;
 extern crate sync;
 
+use std::iter;
 use std::mem;
 use std::ptr;
 use std::str;
@@ -53,6 +54,38 @@ pub fn init() -> Result<Context, InitError> {
         });
     }
     result
+}
+
+pub struct EngineList {
+    list: *mut ffi::Eina_List,
+}
+
+impl EngineList {
+    pub fn iter<'a>(&'a self) -> Engines<'a> {
+        Engines {
+            iter: ffi::eina_list_iter(self.list as *const _).map(|data| {
+                unsafe { str::raw::from_c_str(data as *const _) }
+            }),
+        }
+    }
+}
+
+impl Drop for EngineList {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::ecore_evas_engines_free(self.list);
+        }
+    }
+}
+
+pub struct Engines<'a> {
+    iter: iter::Map<'a, *mut libc::c_void, String, ffi::EinaListItems>
+}
+
+impl<'a> Iterator<String> for Engines<'a> {
+    fn next(&mut self) -> Option<String> {
+        self.iter.next()
+    }
 }
 
 impl Context {
@@ -96,6 +129,12 @@ impl Context {
     pub fn main_loop_quit(&self) {
         println!("bye");
         unsafe { ffi::ecore_main_loop_quit() }
+    }
+
+    pub fn get_engine_list(&self) -> EngineList {
+        EngineList {
+            list: unsafe { ffi::ecore_evas_engines_get() }
+        }
     }
 }
 
