@@ -41,6 +41,7 @@ FFI_INPUT             = $(SRC_DIR)/ffi/*.rs
 FFI_OUT               = $(LIB_DIR)/$(shell $(RUSTC) --print-file-name $(FFI_FILE))
 FFI_SEARCH_PATHS      = $(DEPS_LIB_DIR)
 FFI_SEARCH_FLAGS      = $(patsubst %,-L %, $(FFI_SEARCH_PATHS))
+FFI_DOC_OUT           = $(DOC_DIR)/$(shell $(RUSTC) --print-crate-name $(FFI_FILE))
 
 EFL_FILE              = $(SRC_DIR)/efl/lib.rs
 EFL_INPUT             = $(SRC_DIR)/efl/*.rs $(FFI_OUT)
@@ -104,12 +105,16 @@ clean-lib:
 
 # Documentation generation
 
+$(FFI_DOC_OUT): $(FFI_INPUT)
+	mkdir -p $(DOC_DIR)
+	$(RUSTDOC) -o $(DOC_DIR) $(FFI_SEARCH_FLAGS) $(FFI_FILE)
+
 $(EFL_DOC_OUT): $(EFL_INPUT)
 	mkdir -p $(DOC_DIR)
 	$(RUSTDOC) -o $(DOC_DIR) $(EFL_SEARCH_FLAGS) $(EFL_FILE)
 
 .PHONY: doc
-doc: $(EFL_DOC_OUT)
+doc: $(EFL_DOC_OUT) $(FFI_DOC_OUT)
 
 .PHONY: clean-doc
 clean-doc:
