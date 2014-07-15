@@ -78,7 +78,7 @@ impl Context {
                 // We store a pointer back to the window so that the
                 // `extern "C"` event callbacks can access their corresponding
                 // Rust callbacks in the `EventCallbacks` vtable.
-                "_WINDOW_EVENT_CALLBACKS_".with_c_str(|key| {
+                Window::data_ptr_key().with_c_str(|key| {
                     ffi::ecore_evas_data_set(window.ee, key, &window as *const _ as *const _)
                 });
             }
@@ -114,6 +114,8 @@ impl std::fmt::Show for Window {
 }
 
 impl Window {
+    fn data_ptr_key() -> &'static str { "WINDOW_PTR" }
+
     pub fn get_context<'a>(&'a self) -> &'a Context {
         &self.context
     }
@@ -333,7 +335,7 @@ macro_rules! event_callbacks {
 
         $(extern "C" fn $extern_callback(ee: *mut ffi::Ecore_Evas) {
             let window = unsafe {
-                "_WINDOW_EVENT_CALLBACKS_".with_c_str(|key| {
+                Window::data_ptr_key().with_c_str(|key| {
                     // We assume that the types match
                     ffi::ecore_evas_data_get(ee as *const _, key) as *const Window
                 })
