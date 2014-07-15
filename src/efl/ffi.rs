@@ -46,3 +46,11 @@ impl Iterator<*mut libc::c_void> for EinaListItems {
         }
     }
 }
+
+impl Drop for EinaListItems {
+    fn drop(&mut self) {
+        unsafe {
+            eina_iterator_free(self.iter);
+        }
+    }
+}
