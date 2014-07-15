@@ -78,8 +78,9 @@ impl Context {
                 // We store a pointer back to the window so that the
                 // `extern "C"` event callbacks can access their corresponding
                 // Rust callbacks in the `EventCallbacks` vtable.
+                let window_ptr: *const Window = &window;
                 Window::data_ptr_key().with_c_str(|key| {
-                    ffi::ecore_evas_data_set(window.ee, key, &window as *const _ as *const _)
+                    ffi::ecore_evas_data_set(window.ee, key, window_ptr as *const _)
                 });
             }
             Ok(window)
@@ -334,18 +335,15 @@ macro_rules! event_callbacks {
         }
 
         $(extern "C" fn $extern_callback(ee: *mut ffi::Ecore_Evas) {
-            let window = unsafe {
-                Window::data_ptr_key().with_c_str(|key| {
-                    // We assume that the types match
-                    ffi::ecore_evas_data_get(ee as *const _, key) as *const Window
-                })
-            };
             println!(stringify!($extern_callback));
-            assert!(!window.is_null())
             unsafe {
-                (&*window).event_callbacks.$field.as_ref().map(|$field| {
-                    println!("{:p}", $field);
-                    // $field.call(window) // segfault! >_<
+                let window = Window::data_ptr_key().with_c_str(|key| {
+                    ffi::ecore_evas_data_get(ee as *const _, key)
+                }) as *const Window;
+                assert!(!window.is_null());
+                (*window).event_callbacks.$field.as_ref().map(|callback| {
+                    println!("{:p}", callback);
+                    callback.call(&*window) // segfault! >_<
                 });
             }
         })+
