@@ -20,7 +20,7 @@
 extern crate libc;
 extern crate sync;
 
-use std::iter;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::str;
@@ -56,16 +56,16 @@ pub fn init() -> Result<Context, InitError> {
     result
 }
 
+/// A list of rendering engine identifiers
 pub struct EngineList {
     list: *mut ffi::Eina_List,
 }
 
 impl EngineList {
+    /// Returns an iterator over the list of engine identifiers
     pub fn iter<'a>(&'a self) -> Engines<'a> {
         Engines {
-            iter: ffi::eina_list_iter(self.list as *const _).map(|data| {
-                unsafe { str::raw::from_c_str(data as *const _) }
-            }),
+            iter: ffi::eina_list_iter(self.list as *const _),
         }
     }
 }
@@ -73,18 +73,45 @@ impl EngineList {
 impl Drop for EngineList {
     fn drop(&mut self) {
         unsafe {
-            ffi::ecore_evas_engines_free(self.list);
+            ffi ::ecore_evas_engines_free(self.list);
         }
     }
 }
 
+/// An iterator over an `EngineList`.
 pub struct Engines<'a> {
-    iter: iter::Map<'a, *mut libc::c_void, String, ffi::EinaListItems>
+    iter: ffi::EinaListItems,
 }
 
-impl<'a> Iterator<String> for Engines<'a> {
-    fn next(&mut self) -> Option<String> {
-        self.iter.next()
+impl<'a> Iterator<Engine> for Engines<'a> {
+    fn next(&mut self) -> Option<Engine> {
+        self.iter.next().map(|data| Engine {
+            name: unsafe { str::raw::from_c_str(data as *const _) },
+        })
+    }
+}
+
+/// A rendering engine identifier
+pub struct Engine {
+    name: String,
+}
+
+impl Engine {
+    /// Returns the name identifying the rendering engine
+    pub fn name<'a>(&'a self) -> &'a str {
+        self.name.as_slice()
+    }
+}
+
+impl PartialEq for Engine {
+    fn eq(&self, other: &Engine) -> bool {
+        self.name == other.name
+    }
+}
+
+impl fmt::Show for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -133,7 +160,7 @@ impl Context {
 
     pub fn get_engine_list(&self) -> EngineList {
         EngineList {
-            list: unsafe { ffi::ecore_evas_engines_get() }
+            list: unsafe { ffi::ecore_evas_engines_get() },
         }
     }
 }
