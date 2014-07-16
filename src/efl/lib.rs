@@ -116,43 +116,12 @@ impl fmt::Show for Engine {
 }
 
 impl Context {
-    pub fn new_window(&self, engine: Option<&Engine>, x: i32, y: i32, w: i32, h: i32) -> Result<Window, ()> {
-        let ee = unsafe {
-            match engine {
-                Some(engine) => engine.name.with_c_str(|name| {
-                    ffi::ecore_evas_new(name, x, y, w, h, ptr::null())
-                }),
-                None => {
-                    ffi::ecore_evas_new(ptr::null(), x, y, w, h, ptr::null())
-                },
-            }
-        };
-        if !ee.is_null() {
-            let canvas = unsafe { ffi::ecore_evas_get(ee as *const _) };
-            let object = unsafe { ffi::evas_object_image_add(canvas) };
-            let window = Window {
-                context: *self,
-                ee: ee,
-                canvas: canvas,
-                object: object,
-                event_callbacks: EventCallbacks::new(),
-                input_callbacks: InputCallbacks::new(),
-            };
-            unsafe {
-                ffi::evas_object_resize(window.object, w, h);
-                ffi::evas_object_focus_set(window.object, ffi::EINA_TRUE);
-                ffi::evas_object_show(window.object);
-                // We store a pointer back to the window so that the
-                // `extern "C"` event callbacks can access their corresponding
-                // Rust callbacks in the `EventCallbacks` vtable.
-                let window_ptr: *const Window = &window;
-                Window::data_ptr_key().with_c_str(|key| {
-                    ffi::ecore_evas_data_set(window.ee, key, window_ptr as *const _)
-                });
-            }
-            Ok(window)
-        } else {
-            Err(())
+    pub fn build_window(&self, x: i32, y: i32, w: i32, h: i32) -> WindowBuilder {
+        WindowBuilder {
+            context: *self,
+            engine: None,
+            x: x, y: y,
+            w: w, h: h,
         }
     }
 
@@ -168,6 +137,59 @@ impl Context {
     pub fn get_engine_list(&self) -> EngineList {
         EngineList {
             list: unsafe { ffi::ecore_evas_engines_get() },
+        }
+    }
+}
+
+pub struct WindowBuilder<'a> {
+    context: Context,
+    engine: Option<&'a Engine>,
+    x: i32, y: i32,
+    w: i32, h: i32,
+}
+
+impl<'a> WindowBuilder<'a> {
+    pub fn with_engine(mut self, engine: &'a Engine) -> WindowBuilder<'a> {
+        self.engine = Some(engine); self
+    }
+
+    pub fn create(self) -> Result<Window, ()> {
+        let ee = unsafe {
+            match self.engine {
+                Some(engine) => engine.name.with_c_str(|name| {
+                    ffi::ecore_evas_new(name, self.x, self.y, self.w, self.h, ptr::null())
+                }),
+                None => {
+                    ffi::ecore_evas_new(ptr::null(), self.x, self.y, self.w, self.h, ptr::null())
+                },
+            }
+        };
+        if !ee.is_null() {
+            let canvas = unsafe { ffi::ecore_evas_get(ee as *const _) };
+            let object = unsafe { ffi::evas_object_image_add(canvas) };
+            let window = Window {
+                context: self.context,
+                ee: ee,
+                canvas: canvas,
+                object: object,
+                event_callbacks: EventCallbacks::new(),
+                input_callbacks: InputCallbacks::new(),
+            };
+            unsafe {
+                ffi::evas_object_resize(window.object, self.w, self.h);
+                ffi::evas_object_focus_set(window.object, ffi::EINA_TRUE);
+                ffi::evas_object_show(window.object);
+                // We store a pointer back to the window so that the
+                // `extern "C"` event callbacks can access their corresponding
+                // Rust callbacks in the `EventCallbacks` vtable.
+                let window_ptr: *const Window = &window;
+                Window::data_ptr_key().with_c_str(|key| {
+                    ffi::ecore_evas_data_set(window.ee, key, window_ptr as *const _)
+                });
+            }
+            Ok(window)
+        } else {
+            Err(())
         }
     }
 }
