@@ -20,7 +20,6 @@
 extern crate libc;
 extern crate sync;
 
-use std::fmt;
 use std::mem;
 use std::ptr;
 use std::str;
@@ -28,7 +27,9 @@ use std::str;
 pub mod ffi;
 
 #[deriving(Clone)]
-pub struct Context(());
+pub struct Context {
+    supported_engines: Vec<Engine>,
+}
 
 #[deriving(Show)]
 pub enum InitError {
@@ -44,7 +45,17 @@ pub fn init() -> Result<Context, InitError> {
     unsafe {
         INIT.doit(|| {
             if ffi::ecore_evas_init() != 0 {
-                result = Ok(Context(()));
+                // Get a list of the supported engines
+                let engines_ptr = ffi::ecore_evas_engines_get();
+                let engines = ffi::eina_list_iter(engines_ptr as *const _).map(|data| {
+                    Engine::parse(str::raw::from_c_str(data as *const _))
+                }).collect();
+                ffi::ecore_evas_engines_free(engines_ptr);
+
+                // Everything went ok!
+                result = Ok(Context { supported_engines: engines, });
+
+                // We will need to shut down evas on exiting
                 std::rt::at_exit(proc() {
                     ffi::ecore_evas_shutdown();
                 });
@@ -56,69 +67,58 @@ pub fn init() -> Result<Context, InitError> {
     result
 }
 
-/// A list of rendering engine identifiers
-pub struct EngineList {
-    list: *mut ffi::Eina_List,
-}
+// Generates an enum that specifies the possible engines that EFL can use.
+macro_rules! engines {
+    ($($Engine:ident => $name:pat),+) => {
+        /// A rendering engine identifier
+        #[deriving(Clone, Show, PartialEq, Eq)]
+        pub enum Engine {
+            $($Engine,)+
+            Unknown(String),
+        }
 
-impl EngineList {
-    /// Returns an iterator over the list of engine identifiers
-    pub fn iter<'a>(&'a self) -> Engines<'a> {
-        Engines {
-            iter: ffi::eina_list_iter(self.list as *const _),
+        impl Engine {
+            fn parse(src: String) -> Engine {
+                match src.as_slice() {
+                    $($name => $Engine,)+
+                    _ => Unknown(src),
+                }
+            }
+
+            fn get_efl_name<'a>(&'a self) -> &'a str {
+                match *self {
+                    $($Engine => stringify!($name),)+
+                    Unknown(ref src) => src.as_slice(),
+                }
+            }
         }
     }
 }
 
-impl Drop for EngineList {
-    fn drop(&mut self) {
-        unsafe {
-            ffi ::ecore_evas_engines_free(self.list);
-        }
-    }
-}
-
-/// An iterator over an `EngineList`.
-pub struct Engines<'a> {
-    iter: ffi::EinaListItems,
-}
-
-impl<'a> Iterator<Engine> for Engines<'a> {
-    fn next(&mut self) -> Option<Engine> {
-        self.iter.next().map(|data| Engine {
-            name: unsafe { str::raw::from_c_str(data as *const _) },
-        })
-    }
-}
-
-/// A rendering engine identifier
-pub struct Engine {
-    name: String,
-}
-
-impl Engine {
-    /// Returns the name identifying the rendering engine
-    pub fn name<'a>(&'a self) -> &'a str {
-        self.name.as_slice()
-    }
-}
-
-impl PartialEq for Engine {
-    fn eq(&self, other: &Engine) -> bool {
-        self.name == other.name
-    }
-}
-
-impl fmt::Show for Engine {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
+// This engine list is taken from the implementation of `_ecore_evas_available_engines_get`
+// which can be found in `efl/src/lib/ecore_evas/ecore_evas_module.c`.
+engines! {
+    Fb              => "fb",
+    OpenGlX11       => "opengl_x11",
+    SoftwareX11     => "software_x11",
+    Buffer          => "buffer",
+    Ews             => "ews",
+    OpenglCocoa     => "opengl_cocoa",
+    Psl1ght         => "psl1ght",
+    OpenglSdl       => "opengl_sdl",
+    Sdl             => "sdl",
+    WaylandShm      => "wayland_shm",
+    WaylandEgl      => "wayland_egl",
+    SoftwareGdi     => "software_gdi",
+    SoftwareDdraw   => "software_ddraw",
+    Direct3d        => "direct3d",
+    OpenGlGlew      => "opengl_glew"
 }
 
 impl Context {
-    pub fn build_window(&self, x: i32, y: i32, w: i32, h: i32) -> WindowBuilder {
+    pub fn build_window<'a>(&'a self, x: i32, y: i32, w: i32, h: i32) -> WindowBuilder<'a> {
         WindowBuilder {
-            context: *self,
+            context: self,
             engine: None,
             x: x, y: y,
             w: w, h: h,
@@ -134,29 +134,29 @@ impl Context {
         unsafe { ffi::ecore_main_loop_quit() }
     }
 
-    pub fn get_engine_list(&self) -> EngineList {
-        EngineList {
-            list: unsafe { ffi::ecore_evas_engines_get() },
-        }
+    pub fn get_supported_engines<'a>(&'a self) -> &'a [Engine] {
+        self.supported_engines.as_slice()
     }
 }
 
 pub struct WindowBuilder<'a> {
-    context: Context,
-    engine: Option<&'a Engine>,
+    context: &'a Context,
+    engine: Option<Engine>,
     x: i32, y: i32,
     w: i32, h: i32,
 }
 
 impl<'a> WindowBuilder<'a> {
-    pub fn with_engine(mut self, engine: &'a Engine) -> WindowBuilder<'a> {
+    /// Specify the rendering engine to use with the window. If this is not
+    /// specified the first working rendering engine will be used.
+    pub fn with_engine(mut self, engine: Engine) -> WindowBuilder<'a> {
         self.engine = Some(engine); self
     }
 
-    pub fn create(self) -> Result<Window, ()> {
+    pub fn create(self) -> Result<Window<'a>, ()> {
         let ee = unsafe {
             match self.engine {
-                Some(engine) => engine.name.with_c_str(|name| {
+                Some(ref engine) => engine.get_efl_name().with_c_str(|name| {
                     ffi::ecore_evas_new(name, self.x, self.y, self.w, self.h, ptr::null())
                 }),
                 None => {
@@ -194,8 +194,8 @@ impl<'a> WindowBuilder<'a> {
     }
 }
 
-pub struct Window {
-    context: Context,
+pub struct Window<'a> {
+    context: &'a Context,
     ee: *mut ffi::Ecore_Evas,
     #[allow(dead_code)] canvas: *mut ffi::Evas,
     object: *mut ffi::Evas_Object,
@@ -203,18 +203,16 @@ pub struct Window {
     input_callbacks: InputCallbacks,
 }
 
-impl std::fmt::Show for Window {
+impl<'a> std::fmt::Show for Window<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Window({}, {}, {}, {})", self.ee, self.canvas, self.object, self.event_callbacks.resize.is_some())
     }
 }
 
-impl Window {
+impl<'a> Window<'a> {
     fn data_ptr_key() -> &'static str { "WINDOW_PTR" }
 
-    pub fn get_context<'a>(&'a self) -> &'a Context {
-        &self.context
-    }
+    pub fn get_context<'a>(&'a self) -> &'a Context { self.context }
 
     pub fn set_iconified(&self, on: bool) {
         unsafe { ffi::ecore_evas_iconified_set(self.ee, ffi::to_eina_bool(on)) };
@@ -398,7 +396,7 @@ impl Window {
 }
 
 #[unsafe_destructor]
-impl Drop for Window {
+impl<'a> Drop for Window<'a> {
     fn drop(&mut self) {
         unsafe {
             ffi::ecore_evas_free(self.ee);
@@ -448,7 +446,7 @@ macro_rules! event_callbacks {
             }
         })+
 
-        impl Window {
+        impl<'a> Window<'a> {
             $(pub fn $set_callback(&mut self, callback: Box<EventCallback>) -> Option<Box<EventCallback>> {
                 println!(stringify!($set_callback));
                 unsafe { $extern_set_callback(self.ee, Some($extern_callback)) };
@@ -535,7 +533,7 @@ macro_rules! input_callbacks {
             }
         })+
 
-        impl Window {
+        impl<'a> Window<'a> {
             $(pub fn $set_callback(&mut self, callback: Box<$InputCallback>) -> Option<Box<$InputCallback>> {
                 unsafe {
                     ffi::evas_object_event_callback_add(
