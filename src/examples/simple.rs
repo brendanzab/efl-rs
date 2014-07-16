@@ -41,7 +41,7 @@ fn main() {
     for name in evas.get_engine_list().iter() {
         println!("{}", name);
     }
-    let mut window = evas.new_window(0, 0, 800, 600).unwrap();
+    let mut window = evas.new_window(None, 0, 0, 800, 600).unwrap();
     window.set_title("hurro.");
     println!("Window title: \"{}\"", window.get_title());
     window.set_key_down_callback(box OnKeyDown);

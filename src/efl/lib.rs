@@ -116,9 +116,16 @@ impl fmt::Show for Engine {
 }
 
 impl Context {
-    pub fn new_window(&self, x: i32, y: i32, w: i32, h: i32) -> Result<Window, ()> {
+    pub fn new_window(&self, engine: Option<&Engine>, x: i32, y: i32, w: i32, h: i32) -> Result<Window, ()> {
         let ee = unsafe {
-            ffi::ecore_evas_new(ptr::null(), x, y, w, h, ptr::null())
+            match engine {
+                Some(engine) => engine.name.with_c_str(|name| {
+                    ffi::ecore_evas_new(name, x, y, w, h, ptr::null())
+                }),
+                None => {
+                    ffi::ecore_evas_new(ptr::null(), x, y, w, h, ptr::null())
+                },
+            }
         };
         if !ee.is_null() {
             let canvas = unsafe { ffi::ecore_evas_get(ee as *const _) };
