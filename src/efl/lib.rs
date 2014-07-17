@@ -33,7 +33,8 @@ pub struct Context {
 
 #[deriving(Show)]
 pub enum InitError {
-    InternalInitError,
+    EcoreInitError,
+    EcoreEvasInitError,
     AlreadyInitialized,
 }
 
@@ -44,7 +45,16 @@ pub fn init() -> Result<Context, InitError> {
     let mut result = Err(AlreadyInitialized);
     unsafe {
         INIT.doit(|| {
-            if ffi::ecore_evas_init() != 0 {
+            result = if ffi::ecore_init() == 0 {
+                Err(EcoreInitError)
+            } else if ffi::ecore_evas_init() == 0 {
+                // Evas was not initialised, but we still need to shut down
+                // ecore on exiting
+                std::rt::at_exit(proc() {
+                    ffi::ecore_shutdown();
+                });
+                Err(EcoreEvasInitError)
+            } else {
                 // Get a list of the supported engines
                 let engines_ptr = ffi::ecore_evas_engines_get();
                 let engines = ffi::eina_list_iter(engines_ptr as *const _).map(|data| {
@@ -52,16 +62,14 @@ pub fn init() -> Result<Context, InitError> {
                 }).collect();
                 ffi::ecore_evas_engines_free(engines_ptr);
 
-                // Everything went ok!
-                result = Ok(Context { supported_engines: engines, });
-
                 // We will need to shut down evas on exiting
                 std::rt::at_exit(proc() {
                     ffi::ecore_evas_shutdown();
+                    ffi::ecore_shutdown();
                 });
-            } else {
-                result = Err(InternalInitError);
-            }
+
+                Ok(Context { supported_engines: engines, })
+            };
         });
     }
     result
