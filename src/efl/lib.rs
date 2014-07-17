@@ -122,6 +122,7 @@ impl Context {
             engine: None,
             x: x, y: y,
             w: w, h: h,
+            gl_config: GlConfig::new(),
         }
     }
 
@@ -139,11 +140,101 @@ impl Context {
     }
 }
 
+/// Surface color format.
+#[repr(u32)]
+pub enum ColorFormat {
+    Rgb888 = ffi::EVAS_GL_RGB_888,
+    Rgba8888 = ffi::EVAS_GL_RGBA_8888,
+}
+
+/// Surface depth format.
+#[repr(u32)]
+pub enum DepthBits {
+    DepthBits8 = ffi::EVAS_GL_DEPTH_BIT_8,
+    DepthBits16 = ffi::EVAS_GL_DEPTH_BIT_16,
+    DepthBits24 = ffi::EVAS_GL_DEPTH_BIT_24,
+    DepthBits32 = ffi::EVAS_GL_DEPTH_BIT_32,
+}
+/// Surface stencil format.
+#[repr(u32)]
+pub enum StencilBits {
+    StencilBits1 = ffi::EVAS_GL_STENCIL_BIT_1,
+    StencilBits2 = ffi::EVAS_GL_STENCIL_BIT_2,
+    StencilBits4 = ffi::EVAS_GL_STENCIL_BIT_4,
+    StencilBits8 = ffi::EVAS_GL_STENCIL_BIT_8,
+    StencilBits16 = ffi::EVAS_GL_STENCIL_BIT_16,
+}
+
+bitflags! {
+    #[doc = "OpenGl configuration options"]
+    flags GlOptions: libc::c_uint {
+        #[doc = "No extra options."]
+        static GlOptionsNone = ffi::EVAS_GL_OPTIONS_NONE,
+        #[doc = "Allow rendering directly to the window when possible."]
+        static GlOptionsDirect = ffi::EVAS_GL_OPTIONS_DIRECT
+    }
+}
+
+/// Options for a multisample, anti-aliased (MSAA) rendering surface.
+///
+/// Only works for supported devices.
+#[repr(u32)]
+pub enum MultisampleBits {
+    /// MSAA with a minimum number of samples.
+    MultisampleLow = ffi::EVAS_GL_MULTISAMPLE_LOW,
+    /// MSAA with half the maximum number of samples.
+    MultisampleMedium = ffi::EVAS_GL_MULTISAMPLE_MED,
+    /// MSAA with the maximum number of samples allowed.
+    MultisampleHigh = ffi::EVAS_GL_MULTISAMPLE_HIGH,
+}
+
+/// A struct that holds the OpenGL configuration. EFL requires us to allocate
+/// and deallocate the configuration instead of instantiating the struct
+/// ourselves for backwards compatibility reasons.
+struct GlConfig {
+    ptr: *mut ffi::Evas_GL_Config,
+}
+
+impl GlConfig {
+    fn new() -> GlConfig {
+        let ptr = unsafe { ffi::evas_gl_config_new() };
+        assert!(!ptr.is_null());
+        GlConfig { ptr: ptr }
+    }
+
+    fn set_color_format(&mut self, format: ColorFormat) {
+        unsafe { (*self.ptr).color_format = format as libc::c_uint };
+    }
+
+    fn set_depth(&mut self, depth: Option<DepthBits>) {
+        unsafe { (*self.ptr).depth_bits = depth.map_or(ffi::EVAS_GL_DEPTH_NONE, |x| x as libc::c_uint) };
+    }
+
+    fn set_stencil(&mut self, stencil: Option<StencilBits>) {
+        unsafe { (*self.ptr).stencil_bits = stencil.map_or(ffi::EVAS_GL_STENCIL_NONE, |x| x as libc::c_uint) };
+    }
+
+    fn set_options(&mut self, options: GlOptions) {
+        unsafe { (*self.ptr).options_bits = options.bits };
+    }
+
+    fn set_multisample(&mut self, multisample: Option<MultisampleBits>) {
+        unsafe { (*self.ptr).multisample_bits = multisample.map_or(ffi::EVAS_GL_MULTISAMPLE_NONE, |x| x as libc::c_uint) };
+    }
+}
+
+impl Drop for GlConfig {
+    fn drop(&mut self) {
+        unsafe { ffi::evas_gl_config_free(self.ptr) };
+    }
+}
+
 pub struct WindowBuilder<'a> {
     context: &'a Context,
     engine: Option<Engine>,
     x: i32, y: i32,
     w: i32, h: i32,
+    gl_config: GlConfig,
 }
 
 impl<'a> WindowBuilder<'a> {
@@ -153,14 +244,41 @@ impl<'a> WindowBuilder<'a> {
         self.engine = Some(engine); self
     }
 
+    pub fn with_color_format(mut self, format: ColorFormat) -> WindowBuilder<'a> {
+        self.gl_config.set_color_format(format); self
+    }
+
+    pub fn with_gl_depth(mut self, depth: Option<DepthBits>) -> WindowBuilder<'a> {
+        self.gl_config.set_depth(depth); self
+    }
+
+    pub fn with_gl_stencil(mut self, stencil: Option<StencilBits>) -> WindowBuilder<'a> {
+        self.gl_config.set_stencil(stencil); self
+    }
+
+    pub fn with_gl_options(mut self, options: GlOptions) -> WindowBuilder<'a> {
+        self.gl_config.set_options(options); self
+    }
+
+    pub fn with_gl_multisample(mut self, multisample: Option<MultisampleBits>) -> WindowBuilder<'a> {
+        self.gl_config.set_multisample(multisample); self
+    }
+
     pub fn create(self) -> Result<Window<'a>, ()> {
+        let WindowBuilder {
+            context,
+            engine,
+            x, y, w, h,
+            gl_config,
+        } = self;
+
         let ee = unsafe {
-            match self.engine {
+            match engine {
                 Some(ref engine) => engine.get_efl_name().with_c_str(|name| {
-                    ffi::ecore_evas_new(name, self.x, self.y, self.w, self.h, ptr::null())
+                    ffi::ecore_evas_new(name, x, y, w, h, ptr::null())
                 }),
                 None => {
-                    ffi::ecore_evas_new(ptr::null(), self.x, self.y, self.w, self.h, ptr::null())
+                    ffi::ecore_evas_new(ptr::null(), x, y, w, h, ptr::null())
                 },
             }
         };
@@ -168,15 +286,16 @@ impl<'a> WindowBuilder<'a> {
             let canvas = unsafe { ffi::ecore_evas_get(ee as *const _) };
             let object = unsafe { ffi::evas_object_image_add(canvas) };
             let window = Window {
-                context: self.context,
+                context: context,
                 ee: ee,
                 canvas: canvas,
                 object: object,
+                _gl_config: gl_config,
                 event_callbacks: EventCallbacks::new(),
                 input_callbacks: InputCallbacks::new(),
             };
             unsafe {
-                ffi::evas_object_resize(window.object, self.w, self.h);
+                ffi::evas_object_resize(window.object, w, h);
                 ffi::evas_object_focus_set(window.object, ffi::EINA_TRUE);
                 ffi::evas_object_show(window.object);
                 // We store a pointer back to the window so that the
@@ -197,9 +316,15 @@ impl<'a> WindowBuilder<'a> {
 pub struct Window<'a> {
     context: &'a Context,
     ee: *mut ffi::Ecore_Evas,
-    #[allow(dead_code)] canvas: *mut ffi::Evas,
+    #[allow(dead_code)]
+    canvas: *mut ffi::Evas,
     object: *mut ffi::Evas_Object,
+    /// Carry these parameters for the lifetime of the window, and destroy them
+    /// at afterwards
+    _gl_config: GlConfig,
+    /// The vtable of event callbacks associated with the window
     event_callbacks: EventCallbacks,
+    /// The vtable of input callbacks associated with the window
     input_callbacks: InputCallbacks,
 }
 
