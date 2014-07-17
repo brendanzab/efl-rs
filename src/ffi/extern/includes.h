@@ -9,4 +9,5 @@
 
 #include <Ecore.h>
 #include <Evas.h>
+#include <Evas_GL.h>
 #include <Ecore_Evas.h>

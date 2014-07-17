@@ -105,7 +105,7 @@ clean-lib:
 
 # Documentation generation
 
-$(FFI_DOC_OUT): $(FFI_INPUT)
+$(FFI_DOC_OUT): $(EXTERN_OUT) $(FFI_INPUT)
 	mkdir -p $(DOC_DIR)
 	$(RUSTDOC) -o $(DOC_DIR) $(FFI_SEARCH_FLAGS) $(FFI_FILE)
 
